@@ -1,0 +1,253 @@
+'use client';
+
+import { useEffect, useState, type FormEvent } from 'react';
+import Swal from 'sweetalert2';
+import {
+  Plus, Pencil, Trash2, Wrench, Loader2, X, Clock, Shield,
+} from 'lucide-react';
+
+interface Service {
+  id: number;
+  name: string;
+  price: number;
+  duration: string;
+  warranty: string;
+  icon: string;
+  description: string;
+}
+
+const empty = (): Service => ({
+  id: 0,
+  name: '',
+  price: 0,
+  duration: '',
+  warranty: '',
+  icon: '🔧',
+  description: '',
+});
+
+const formatIDR = (n: number) => 'Rp ' + n.toLocaleString('id-ID');
+
+export default function AdminServicesPage() {
+  const [services, setServices] = useState<Service[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [form, setForm] = useState<Service>(empty());
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/content/services');
+      if (!res.ok) throw new Error('API error');
+      const data: Service[] = await res.json();
+      setServices(Array.isArray(data) ? data : []);
+    } catch {
+      Swal.fire({ icon: 'error', title: 'Gagal Memuat', text: 'Tidak dapat memuat data layanan.', confirmButtonColor: '#C2410C' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const openAdd = () => {
+    setEditId(null);
+    setForm({ ...empty(), id: services.length > 0 ? Math.max(...services.map((s) => s.id)) + 1 : 1 });
+    setShowModal(true);
+  };
+
+  const openEdit = (s: Service) => {
+    setEditId(s.id);
+    setForm({ ...s });
+    setShowModal(true);
+  };
+
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim() || !form.price || form.price < 0) {
+      setShowModal(true);
+      Swal.fire({ icon: 'warning', title: 'Data Belum Lengkap', text: 'Nama dan harga wajib diisi dengan benar.', confirmButtonColor: '#C2410C' });
+      return;
+    }
+
+    const next = [...services];
+    if (editId === null) {
+      next.push(form);
+    } else {
+      const idx = next.findIndex((s) => s.id === editId);
+      if (idx !== -1) next[idx] = form;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/content/services', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
+      if (!res.ok) throw new Error('API error');
+      setServices(next);
+      setShowModal(false);
+      Swal.fire({ icon: 'success', title: 'Layanan Disimpan', timer: 1500, showConfirmButton: false });
+    } catch {
+      Swal.fire({ icon: 'error', title: 'Gagal Menyimpan', text: 'Tidak dapat menyimpan layanan.', confirmButtonColor: '#C2410C' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (service: Service) => {
+    const { isConfirmed } = await Swal.fire({
+      title: 'Hapus Layanan?',
+      html: `<p class="text-sm">Layanan <strong>${service.name}</strong> akan hilang dari situs.</p>`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Ya, Hapus',
+      cancelButtonText: 'Batal',
+      confirmButtonColor: '#DC2626',
+      cancelButtonColor: '#1E293B',
+    });
+    if (!isConfirmed) return;
+
+    const next = services.filter((s) => s.id !== service.id);
+    try {
+      const res = await fetch('/api/admin/content/services', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next),
+      });
+      if (!res.ok) throw new Error('API error');
+      setServices(next);
+      Swal.fire({ icon: 'success', title: 'Layanan Dihapus', timer: 1500, showConfirmButton: false });
+    } catch {
+      Swal.fire({ icon: 'error', title: 'Gagal Menghapus', text: 'Tidak dapat menghapus layanan.', confirmButtonColor: '#C2410C' });
+    }
+  };
+
+  const field = (label: string, value: string, setter: (v: string) => void, placeholder = '', type: string = 'text') => (
+    <div>
+      <label className="field-label">{label}</label>
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => setter(e.target.value)}
+        className="field-input !bg-white"
+      />
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-10">
+        <div>
+          <p className="text-xs font-black text-orange-700 uppercase tracking-widest mb-2">Manajemen</p>
+          <h1 className="font-playfair font-black text-3xl lg:text-4xl text-slate-900">Layanan</h1>
+          <p className="text-slate-500 font-semibold mt-2 text-sm">
+            Kelola daftar layanan yang tampil di halaman Layanan, halaman detail, footer, dan form booking.
+          </p>
+        </div>
+        <button onClick={openAdd} className="btn-primary shrink-0">
+          <Plus className="w-4 h-4" /> Tambah Layanan
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-24 text-slate-400">
+          <Loader2 className="w-6 h-6 animate-spin mr-3" /> Memuat data...
+        </div>
+      ) : services.length === 0 ? (
+        <div className="bg-white rounded-[2rem] py-20 text-center border border-slate-100 shadow-sm">
+          <Wrench className="w-12 h-12 mx-auto text-slate-300 mb-4" />
+          <p className="font-bold text-slate-500">Belum ada layanan</p>
+          <p className="text-sm text-slate-400 mt-1">Tambahkan layanan pertama Anda.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {services.map((service) => (
+            <article
+              key={service.id}
+              className="bg-white rounded-[1.75rem] p-6 shadow-[0_20px_50px_-35px_rgba(15,23,42,0.4)] border border-slate-100 relative overflow-hidden group"
+            >
+              <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-orange-700 to-orange-400" />
+              <div className="flex items-start justify-between gap-4 mb-5">
+                <span className="text-4xl">{service.icon}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => openEdit(service)}
+                    aria-label={`Edit layanan ${service.name}`}
+                    className="p-2.5 rounded-xl bg-slate-100 text-slate-600 hover:bg-orange-700 hover:text-white transition-colors"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(service)}
+                    aria-label={`Hapus layanan ${service.name}`}
+                    className="p-2.5 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <h2 className="font-bold text-slate-900 text-lg">{service.name}</h2>
+              <p className="text-sm text-slate-500 font-semibold mt-1.5 line-clamp-2">{service.description}</p>
+              <div className="flex items-center justify-between mt-5 pt-5 border-t border-slate-100">
+                <span className="font-black text-slate-900">{formatIDR(service.price)}</span>
+                <div className="flex items-center gap-4 text-xs text-slate-500 font-bold">
+                  <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5 text-orange-700" />{service.duration}</span>
+                  <span className="inline-flex items-center gap-1"><Shield className="w-3.5 h-3.5 text-orange-700" />{service.warranty}</span>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" onClick={() => setShowModal(false)} />
+          <form onSubmit={save} className="relative w-full max-w-lg bg-white rounded-[2rem] shadow-2xl p-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-playfair font-black text-2xl text-slate-900">
+                {editId === null ? 'Tambah Layanan' : 'Edit Layanan'}
+              </h3>
+              <button type="button" onClick={() => setShowModal(false)} aria-label="Tutup" className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors">
+                <X className="w-5 h-5 text-slate-600" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {field('Nama Layanan *', form.name, (v) => setForm({ ...form, name: v }), 'Ganti LCD', 'text')}
+              {field('Icon (emoji)', form.icon, (v) => setForm({ ...form, icon: v }), '🖥️')}
+              {field('Harga (Rp) *', String(form.price), (v) => setForm({ ...form, price: Number(v) || 0 }), '350000', 'number')}
+              {field('Estimasi Waktu', form.duration, (v) => setForm({ ...form, duration: v }), '2 jam')}
+              {field('Masa Garansi', form.warranty, (v) => setForm({ ...form, warranty: v }), '3 bulan')}
+            </div>
+
+            <div className="mt-4">
+              <label className="field-label">Deskripsi</label>
+              <textarea
+                value={form.description}
+                placeholder="Jelaskan layanan ini..."
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                className="field-input !bg-white min-h-[110px] resize-y"
+              />
+            </div>
+
+            <div className="flex gap-3 mt-8">
+              <button type="submit" disabled={saving} className="btn-primary flex-1 justify-center disabled:opacity-60">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Simpan Layanan
+              </button>
+              <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">Batal</button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
